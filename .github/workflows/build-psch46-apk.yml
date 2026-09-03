@@ -35,7 +35,7 @@ jobs:
           python android-psch46/tools/normalize_settlement_aliases.py
           python android-psch46/tools/fix_catalog.py
           python android-psch46/tools/enrich_max_dataset.py
-          python android-psch46/tools/reroute_firetruck_safe.py
+          python android-psch46/tools/reroute_firetruck_safe_balanced.py
           python android-psch46/tools/audit_route_river_crossings.py
           test -s android-psch46/app/src/main/assets/www/data.js
           test -s android-psch46/app/src/main/assets/www/route-enhancements.js
@@ -44,7 +44,7 @@ jobs:
           grep -q '"maxDataset":true' android-psch46/app/src/main/assets/www/data.js
           grep -q '"officialCount":306' android-psch46/app/src/main/assets/www/data.js
           grep -q '"routeValidation":true' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"routingProfile":"firetruck-safe-v2.1"' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"routingProfile":"firetruck-safe-balanced-v2.1"' android-psch46/app/src/main/assets/www/data.js
           grep -q '"riverCrossingAudit":true' android-psch46/app/src/main/assets/www/data.js
           python - <<'PY'
           import json
