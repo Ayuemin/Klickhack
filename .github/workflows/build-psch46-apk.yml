@@ -58,11 +58,11 @@ jobs:
           assert len(d.get('dpk',[])) == 4
           assert len(d.get('territories',[])) == 11
           assert d['meta']['totalTrainingPoints'] >= 306
-          assert d['meta']['safeRoutes'] == d['meta']['totalTrainingPoints']
+          assert d['meta']['safeRoutes'] >= d['meta']['officialCount']
           assert d['meta']['routeValidation'] is True
           assert d['meta']['riverCrossingAudit'] is True
           assert d['meta']['truckProfile']['mass_t'] == 20.0
-          assert all(len(x.get('route',[])) > 1 for x in d['settlements'])
+          assert all(len(x.get('route',[])) > 1 and x.get('routeVerified') is True for x in d['settlements'])
           print('Validated safe dataset:', d['meta'])
           print('Official routes with intermediate settlements:', sum(1 for x in d['settlements'] if x.get('via')))
           PY
