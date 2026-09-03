@@ -6,6 +6,7 @@ if(typeof routeStage!=='function'||typeof map==='undefined'||typeof state==='und
 prefs.showWater = prefs.showWater !== false;
 state.waters = state.waters || [];
 state.nearWaterMarks = state.nearWaterMarks || [];
+state.unverifiedConnector = state.unverifiedConnector || null;
 
 function waterIsLine(w){return w.type==='река'||w.type==='ручей'}
 function waterNamed(w){return w.name && !String(w.name).includes('без названия')}
@@ -27,6 +28,14 @@ function drawWater(){
     state.waters.push(layer);
   });
 }
+
+// Clean reward-only overlays when moving to the next question.
+const baseClearRoute=clearRoute;
+window.clearRoute=function(){
+  state.nearWaterMarks.forEach(x=>{try{map.removeLayer(x)}catch(e){}});state.nearWaterMarks=[];
+  if(state.unverifiedConnector){try{map.removeLayer(state.unverifiedConnector)}catch(e){};state.unverifiedConnector=null}
+  baseClearRoute();
+};
 
 // Add a settings switch without touching the large base HTML file.
 const settingsModal=document.querySelector('#settings .modal');
@@ -60,11 +69,20 @@ window.routeStage=function(){
   state.stage='route';
   clearDots();
   clearRoute();
-  state.nearWaterMarks.forEach(x=>{try{map.removeLayer(x)}catch(e){}});state.nearWaterMarks=[];
   stageBar.textContent='Маршрут-награда · ПСЧ‑46 → '+state.target.name;
+
   const real=state.target.route&&state.target.route.length>1;
-  const route=real?state.target.route:[[D.station.lat,D.station.lon],[state.target.lat,state.target.lon]];
-  state.route=L.polyline(route,{color:'#d73531',weight:5,opacity:.94,lineCap:'round',lineJoin:'round'}).addTo(map);
+  const verified=state.target.routeVerified!==false;
+  const route=real?state.target.route:null;
+  if(route){
+    state.route=L.polyline(route,{color:'#d73531',weight:5,opacity:.94,lineCap:'round',lineJoin:'round'}).addTo(map);
+  }
+
+  // Never pretend that the final gap is a road. An unverified approach is shown only as an amber dashed guide.
+  if(!verified&&route&&route.length){
+    const end=route[route.length-1];
+    state.unverifiedConnector=L.polyline([end,[state.target.lat,state.target.lon]],{color:'#d98a22',weight:3,opacity:.86,dashArray:'7 8',lineCap:'round',interactive:false}).addTo(map);
+  }
 
   const via=Array.isArray(state.target.via)?state.target.via:[];
   via.forEach((p)=>{
@@ -78,21 +96,29 @@ window.routeStage=function(){
 
   const targetIcon=L.divIcon({className:'',html:'<div style="width:24px;height:24px;border-radius:50% 50% 50% 0;background:#d93632;border:3px solid white;transform:rotate(-45deg);box-shadow:0 2px 7px rgba(0,0,0,.3)"><i style="display:block;width:6px;height:6px;border-radius:50%;background:white;margin:6px"></i></div>',iconSize:[24,24],iconAnchor:[12,22]});
   state.targetMark=L.marker([state.target.lat,state.target.lon],{icon:targetIcon,zIndexOffset:700}).addTo(map).bindTooltip(state.target.name,{permanent:true,direction:'top',offset:[0,-16]});
-  const bounds=state.route.getBounds();
+
+  let bounds=state.route?state.route.getBounds():L.latLngBounds([[state.target.lat,state.target.lon],[D.station.lat,D.station.lon]]);
+  if(!verified)bounds.extend([state.target.lat,state.target.lon]);
   nearWater.filter(w=>Number(w.distanceKm)<=3).slice(0,3).forEach(w=>bounds.extend([w.lat,w.lon]));
-  map.fitBounds(bounds,{paddingTopLeft:[28,66],paddingBottomRight:[28,270],maxZoom:14});
+  map.fitBounds(bounds,{paddingTopLeft:[28,66],paddingBottomRight:[28,300],maxZoom:14});
 
   card.style.display='block';
   card.className='card routeCard';
-  const km=state.target.distanceKm!=null?state.target.distanceKm+' км':(real?'маршрут':'направление');
-  const viaHtml=via.length
-    ? `<div style="margin:7px 0 8px;background:#edf3f7;border-radius:10px;padding:8px 9px"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.55px;color:#6c7d89;font-weight:850;margin-bottom:4px">По пути</div><div style="font-size:11px;line-height:1.45;font-weight:750;color:#27465d">ПСЧ‑46 · Рамешки → ${via.map(x=>esc(x.name)).join(' → ')} → ${esc(state.target.name)}</div></div>`
-    : `<div style="margin:7px 0 8px;background:#edf3f7;border-radius:10px;padding:8px 9px"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.55px;color:#6c7d89;font-weight:850;margin-bottom:4px">По пути</div><div style="font-size:11px;line-height:1.45;font-weight:750;color:#27465d">ПСЧ‑46 · Рамешки → ${esc(state.target.name)}</div></div>`;
+  const km=state.target.distanceKm!=null?state.target.distanceKm+' км':(real?'маршрут':'—');
+  const chain=via.length?via.map(x=>esc(x.name)).join(' → ')+' → ':'';
+  const viaHtml=verified
+    ? `<div style="margin:7px 0 8px;background:#edf3f7;border-radius:10px;padding:8px 9px"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.55px;color:#6c7d89;font-weight:850;margin-bottom:4px">По пути</div><div style="font-size:11px;line-height:1.45;font-weight:750;color:#27465d">ПСЧ‑46 · Рамешки → ${chain}${esc(state.target.name)}</div></div>`
+    : `<div style="margin:7px 0 8px;background:#fff3df;border-left:4px solid #d98a22;border-radius:10px;padding:8px 9px"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.55px;color:#966018;font-weight:850;margin-bottom:4px">Подъезд требует проверки</div><div style="font-size:11px;line-height:1.45;font-weight:750;color:#704817">ПСЧ‑46 · Рамешки → ${chain}ближайшая подтверждённая дорога <span style="color:#a26a1d">⇢ ${esc(state.target.name)}</span></div><div style="font-size:9px;color:#8a6a3e;margin-top:4px">Оранжевый пунктир (${Number(state.target.routeSnapKm||0).toFixed(1)} км) — только направление от дороги к метке НП, не подтверждённый проезд.</div></div>`;
+
   const waterRows=nearWater.slice(0,4).map(w=>`<div style="display:flex;gap:7px;align-items:baseline;padding:2px 0"><span style="flex:1;font-weight:750">💧 ${waterLabel(w)}</span><b style="white-space:nowrap">${Number(w.distanceKm).toFixed(1)} км</b></div>`).join('');
-  const waterHtml=`<div style="margin:0 0 8px;background:#e9f6fc;border-left:4px solid #4b9dca;border-radius:9px;padding:7px 9px"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.55px;color:#367895;font-weight:850;margin-bottom:3px">Вода рядом с целью</div>${waterRows||'<div style="font-size:10px;color:#587687">В радиусе 7 км источник на карте не найден.</div>'}<div style="font-size:8px;color:#66818f;margin-top:4px">Ориентир по OSM. Подъезд и возможность забора воды требуют проверки на местности.</div></div>`;
+  const waterHtml=`<div style="margin:0 0 8px;background:#e9f6fc;border-left:4px solid #4b9dca;border-radius:9px;padding:7px 9px"><div style="font-size:8px;text-transform:uppercase;letter-spacing:.55px;color:#367895;font-weight:850;margin-bottom:3px">Вода рядом с целью</div>${waterRows||'<div style="font-size:10px;color:#587687">В радиусе 7 км источник на карте не найден.</div>'}<div style="font-size:8px;color:#66818f;margin-top:4px">Ориентир по OSM. Подъезд, состояние берега и возможность забора воды требуют проверки на местности.</div></div>`;
+
   const safe=D.meta&&String(D.meta.routingProfile||'').startsWith('firetruck-safe');
-  const safeHtml=safe?'<span style="display:inline-block;margin-left:6px;border-radius:999px;background:#e4f4eb;color:#28724f;padding:3px 6px;font-size:8px;font-weight:850">проверенный дорожный маршрут</span>':'';
-  card.innerHTML=`<div class="kicker">Правильный ответ ${safeHtml}</div><div class="place">${esc(state.target.name)}</div>${viaHtml}${waterHtml}<div class="routeInfo"><div class="pill"><small>От ПСЧ‑46</small><b>${km}</b></div><div class="pill"><small>Серия</small><b>${stats.streak}</b></div><div class="pill"><small>Лучшее</small><b>${stats.best}</b></div></div><div class="actions"><button class="secondary" id="overview">Карта</button><button class="primary" id="next">Готов — следующее</button></div>`;
+  const safeHtml=safe&&verified
+    ? '<span style="display:inline-block;margin-left:6px;border-radius:999px;background:#e4f4eb;color:#28724f;padding:3px 6px;font-size:8px;font-weight:850">проверенный дорожный маршрут</span>'
+    : (!verified?'<span style="display:inline-block;margin-left:6px;border-radius:999px;background:#fff0d8;color:#986018;padding:3px 6px;font-size:8px;font-weight:850">частично проверен</span>':'');
+  const distanceLabel=verified?'От ПСЧ‑46':'По дорогам';
+  card.innerHTML=`<div class="kicker">Правильный ответ ${safeHtml}</div><div class="place">${esc(state.target.name)}</div>${viaHtml}${waterHtml}<div class="routeInfo"><div class="pill"><small>${distanceLabel}</small><b>${km}</b></div><div class="pill"><small>Серия</small><b>${stats.streak}</b></div><div class="pill"><small>Лучшее</small><b>${stats.best}</b></div></div><div class="actions"><button class="secondary" id="overview">Карта</button><button class="primary" id="next">Готов — следующее</button></div>`;
   document.getElementById('next').onclick=()=>{state.catalogTraining=false;question()};
   document.getElementById('overview').onclick=()=>map.fitBounds(D.bbox,{padding:[8,8]});
 };
