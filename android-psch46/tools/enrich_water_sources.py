@@ -40,18 +40,23 @@ def rdp(points,eps=.00012):
         a=rdp(points[:bi+1],eps);b=rdp(points[bi:],eps);return a[:-1]+b
     return [points[0],points[-1]]
 
-def point_seg_km(p,a,b):
+def closest_on_seg(p,a,b):
     lat0=math.radians(p[0]); kx=111.320*math.cos(lat0); ky=110.574
     px,py=p[1]*kx,p[0]*ky; ax,ay=a[1]*kx,a[0]*ky; bx,by=b[1]*kx,b[0]*ky
     dx,dy=bx-ax,by-ay
-    if dx==0 and dy==0:return math.hypot(px-ax,py-ay)
+    if dx==0 and dy==0:return hav(p,a),a
     t=max(0,min(1,((px-ax)*dx+(py-ay)*dy)/(dx*dx+dy*dy)))
-    return math.hypot(px-(ax+t*dx),py-(ay+t*dy))
+    q=(a[0]+t*(b[0]-a[0]),a[1]+t*(b[1]-a[1]))
+    return math.hypot(px-(ax+t*dx),py-(ay+t*dy)),q
 
-def geom_dist_km(p,pts):
-    if not pts:return 999
-    if len(pts)==1:return hav(p,pts[0])
-    return min(point_seg_km(p,a,b) for a,b in zip(pts,pts[1:]))
+def geom_nearest(p,pts):
+    if not pts:return 999,None
+    if len(pts)==1:return hav(p,pts[0]),pts[0]
+    best=(999,None)
+    for a,b in zip(pts,pts[1:]):
+        d,q=closest_on_seg(p,a,b)
+        if d<best[0]:best=(d,q)
+    return best
 
 def feature_type(tags):
     ww=norm(tags.get('waterway')); water=norm(tags.get('water')); lu=norm(tags.get('landuse'))
@@ -60,7 +65,6 @@ def feature_type(tags):
     if water=='pond':return 'пруд'
     if water=='lake':return 'озеро'
     if water=='reservoir' or lu=='reservoir':return 'водохранилище'
-    if water in {'basin','lagoon'}:return 'водоём'
     return 'водоём'
 
 def stable_name(tags,typ):
@@ -89,10 +93,8 @@ for e in raw_water.get('elements',[]):
     c=e.get('center') or {}
     center=(float(c['lat']),float(c['lon'])) if 'lat' in c and 'lon' in c else (geom[len(geom)//2] if geom else None)
     if not center:continue
-    # Ignore tiny decorative/artificial basins when type is otherwise unknown.
-    if typ=='водоём' and norm(tags.get('water')) in {'basin'} and not tags.get('name'):continue
+    if typ=='водоём' and norm(tags.get('water'))=='basin' and not tags.get('name'):continue
     name=stable_name(tags,typ)
-    # Named rivers/streams are split across many OSM ways; preserve segments for drawing but use a stable source group id.
     group=(typ,norm(tags.get('name')) or f"{e.get('type')}:{e.get('id')}")
     fid=f"{e.get('type','x')[0]}{e.get('id')}"
     pts=rdp(geom,.00009 if typ in {'река','ручей'} else .00013) if len(geom)>2 else geom
@@ -102,25 +104,26 @@ for e in raw_water.get('elements',[]):
     seen.add(key)
     features.append({'id':fid,'group':group[0]+'|'+group[1],'name':name,'type':typ,'lat':round(center[0],6),'lon':round(center[1],6),'p':[[a,b] for a,b in pts]})
 
-# For proximity calculations, group contiguous split river/stream ways by type + name. Unnamed features stay separate.
 groups={}
 for f in features:
-    g=groups.setdefault(f['group'],{'name':f['name'],'type':f['type'],'segments':[],'lat':f['lat'],'lon':f['lon']})
+    g=groups.setdefault(f['group'],{'name':f['name'],'type':f['type'],'segments':[]})
     g['segments'].append([tuple(x) for x in f['p']])
 
 def nearest_water(point,limit=5,max_km=7.0):
     rows=[]
     for gid,g in groups.items():
-        d=min((geom_dist_km(point,seg) for seg in g['segments']),default=999)
-        if d<=max_km:
-            rows.append({'group':gid,'name':g['name'],'type':g['type'],'lat':g['lat'],'lon':g['lon'],'distanceKm':round(d,1)})
+        best=(999,None)
+        for seg in g['segments']:
+            d,q=geom_nearest(point,seg)
+            if d<best[0]:best=(d,q)
+        if best[0]<=max_km and best[1] is not None:
+            rows.append({'group':gid,'name':g['name'],'type':g['type'],'lat':round(best[1][0],6),'lon':round(best[1][1],6),'distanceKm':round(best[0],1)})
     rows.sort(key=lambda x:(x['distanceKm'],x['type'],x['name']))
     return rows[:limit]
 
 for s in list(data.get('settlements',[]))+list(data.get('extraPlaces',[])):
     s['nearWater']=nearest_water((float(s['lat']),float(s['lon'])))
 
-# Compact properties for offline app.
 data['waterSources']=features
 meta=data.setdefault('meta',{})
 meta.update({
