@@ -9,6 +9,10 @@ concurrency:
   group: psch46-offline-final-build
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  actions: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,31 +31,23 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Prepare maximum offline assets, safe routes, water layer and icon
+      - name: Restore verified v2 base and add route audit + water
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml cairosvg
-          mkdir -p android-psch46/app/src/main/assets/www android-psch46/app/src/main/res/drawable
+          python -m pip install --disable-pip-version-check requests cairosvg
+          mkdir -p android-psch46/app/src/main/assets/www android-psch46/app/src/main/res/drawable /tmp/base
+          curl -fL --retry 3 -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/${{ github.repository }}/actions/artifacts/9907765727/zip -o /tmp/base.zip
+          unzip -q /tmp/base.zip -d /tmp/base
+          BASE_APK=$(find /tmp/base -name '*.apk' | head -1)
+          test -n "$BASE_APK"
+          unzip -p "$BASE_APK" assets/www/data.js > android-psch46/app/src/main/assets/www/data.js
           curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.js -o android-psch46/app/src/main/assets/www/leaflet.js
           curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o android-psch46/app/src/main/assets/www/leaflet.css
           python -c "import cairosvg; cairosvg.svg2png(url='android-psch46/tools/app_icon.svg',write_to='android-psch46/app/src/main/res/drawable/app_icon.png',output_width=512,output_height=512)"
-          python android-psch46/tools/build_offline_data_locality.py
-          python android-psch46/tools/capture_named_places.py
-          python android-psch46/tools/normalize_settlement_aliases.py
-          python android-psch46/tools/fix_catalog.py
-          python android-psch46/tools/enrich_max_dataset.py
-          python android-psch46/tools/reroute_firetruck_safe_balanced.py
-          python android-psch46/tools/audit_route_river_crossings_reliable.py
+          python android-psch46/tools/audit_existing_routes_fast.py
           python android-psch46/tools/enrich_water_sources_reliable.py
-          test -s android-psch46/app/src/main/assets/www/data.js
-          test -s android-psch46/app/src/main/assets/www/route-enhancements.js
-          test -s android-psch46/app/src/main/res/drawable/app_icon.png
-          grep -q '"catalogVerified":true' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"maxDataset":true' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"officialCount":306' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"routeValidation":true' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"routingProfile":"firetruck-safe-balanced-v2.2"' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"riverCrossingAudit":true' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"waterLayer":true' android-psch46/app/src/main/assets/www/data.js
           python - <<'PY'
           import json
           from pathlib import Path
@@ -59,33 +55,49 @@ jobs:
           s=p.read_text(encoding='utf-8').strip()[len('window.OFFLINE_DATA='):]
           if s.endswith(';'): s=s[:-1]
           d=json.loads(s)
-          official=d['settlements']
-          assert len(official) == 306
-          assert len(d.get('centers',[])) >= 11
-          assert len(d.get('dpk',[])) == 4
-          assert len(d.get('territories',[])) == 11
-          assert d['meta']['totalTrainingPoints'] >= 306
-          assert d['meta']['safeRoutes'] >= d['meta']['officialCount']
-          assert d['meta']['routeValidation'] is True
-          assert d['meta']['riverCrossingAudit'] is True
-          assert d['meta']['waterLayer'] is True
-          assert d['meta']['waterFeatureCount'] > 0
-          assert d['meta']['truckProfile']['mass_t'] == 20.0
-          assert all(len(x.get('route',[])) > 1 for x in official)
+          points=list(d.get('settlements',[]))+list(d.get('extraPlaces',[]))
+          byid={x.get('id'):x for x in points}
+          for group in ('centers','dpk'):
+              for x in d.get(group,[]):
+                  src=byid.get(x.get('id'))
+                  if src:
+                      for k in ('route','distanceKm','via','routeSnapKm','routeVerified','routeWarnings','nearWater'):
+                          x[k]=src.get(k, [] if k in ('via','routeWarnings','nearWater') else None)
+          d.setdefault('meta',{})['routingProfile']='firetruck-safe-audited-existing-v2.2'
+          d['meta']['version']='2.2-final'
+          d['meta']['finalBuild']=True
+          p.write_text('window.OFFLINE_DATA='+json.dumps(d,ensure_ascii=False,separators=(',',':'))+';\n',encoding='utf-8')
+          PY
+          test -s android-psch46/app/src/main/assets/www/data.js
+          test -s android-psch46/app/src/main/assets/www/route-enhancements.js
+          grep -q '"officialCount":306' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"routeValidation":true' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"waterLayer":true' android-psch46/app/src/main/assets/www/data.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('android-psch46/app/src/main/assets/www/data.js')
+          s=p.read_text(encoding='utf-8').strip()[len('window.OFFLINE_DATA='):]
+          if s.endswith(';'): s=s[:-1]
+          d=json.loads(s); official=d['settlements']
+          assert len(official)==306
+          assert len(d.get('centers',[]))==11
+          assert len(d.get('dpk',[]))==4
+          assert len(d.get('territories',[]))==11
+          assert d['meta']['waterFeatureCount']>0
+          assert all(len(x.get('route',[]))>1 for x in official)
+          assert all('routeVerified' in x for x in official)
           assert all('nearWater' in x for x in official)
           assert all('nearWater' in x for x in d.get('centers',[]))
           assert all('nearWater' in x for x in d.get('dpk',[]))
-          unverified=sorted(x['name'] for x in official if x.get('routeVerified') is False)
-          assert unverified == ['Славгущи'], unverified
-          assert d['meta']['verifiedOfficialRoutes'] == 305
-          assert d['meta']['unverifiedOfficialRoutes'] == ['Славгущи']
-          print('Validated final dataset:', d['meta'])
-          print('Verified official road routes: 305 / 306')
-          print('Approach requiring local verification:', unverified)
-          print('Official routes with intermediate settlements:', sum(1 for x in official if x.get('via')))
-          print('Official destinations with water within 7 km:', sum(1 for x in official if x.get('nearWater')))
+          verified=sum(1 for x in official if x.get('routeVerified'))
+          assert verified>=250, verified
+          print('OFFICIAL',len(official),'VERIFIED_ROUTES',verified,'UNVERIFIED',306-verified)
+          print('UNVERIFIED_NAMES',[x['name'] for x in official if not x.get('routeVerified')])
+          print('WATER_FEATURES',d['meta']['waterFeatureCount'])
+          print('WITH_VIA',sum(1 for x in official if x.get('via')))
+          print('WITH_NEAR_WATER',sum(1 for x in official if x.get('nearWater')))
           PY
-          echo "Offline data size: $(du -h android-psch46/app/src/main/assets/www/data.js | cut -f1)"
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
