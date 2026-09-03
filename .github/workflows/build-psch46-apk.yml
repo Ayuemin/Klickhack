@@ -31,8 +31,10 @@ jobs:
           curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o android-psch46/app/src/main/assets/www/leaflet.css
           python -c "import cairosvg; cairosvg.svg2png(url='android-psch46/tools/app_icon.svg',write_to='android-psch46/app/src/main/res/drawable/app_icon.png',output_width=512,output_height=512)"
           python android-psch46/tools/build_offline_data.py
+          python android-psch46/tools/fix_catalog.py
           test -s android-psch46/app/src/main/assets/www/data.js
           test -s android-psch46/app/src/main/res/drawable/app_icon.png
+          grep -q '"catalogVerified":true' android-psch46/app/src/main/assets/www/data.js
           echo "Offline data size: $(du -h android-psch46/app/src/main/assets/www/data.js | cut -f1)"
 
       - name: Set up Android SDK
@@ -49,15 +51,15 @@ jobs:
       - name: Build offline APK
         run: |
           gradle -p android-psch46 assembleDebug --stacktrace
-          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-Offline.apk
+          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-Offline-v1.1.apk
 
       - name: Verify APK has no INTERNET permission
         run: |
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-Offline.apk | tee permissions.txt
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-Offline-v1.1.apk | tee permissions.txt
           if grep -q 'android.permission.INTERNET' permissions.txt; then echo 'Unexpected INTERNET permission'; exit 1; fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PSCH46-Rayon-Trainer-Offline
-          path: PSCH46-Rayon-Trainer-Offline.apk
+          name: PSCH46-Rayon-Trainer-Offline-v1.1
+          path: PSCH46-Rayon-Trainer-Offline-v1.1.apk
