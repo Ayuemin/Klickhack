@@ -1,8 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:allowBackup="true"
         android:label="Район выезда ПСЧ-46"
+        android:icon="@drawable/app_icon"
+        android:roundIcon="@drawable/app_icon"
         android:usesCleartextTraffic="false"
         android:theme="@style/AppTheme">
         <activity
