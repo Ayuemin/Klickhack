@@ -4,6 +4,12 @@ from pathlib import Path
 src=Path(__file__).with_name('reroute_firetruck_safe.py')
 code=src.read_text(encoding='utf-8')
 
+# Use current public Overpass instances. VK Maps is especially suitable for Russian OSM data.
+code=code.replace(
+"OVERPASS = [\"https://overpass-api.de/api/interpreter\",\"https://overpass.kumi.systems/api/interpreter\"]",
+"OVERPASS = [\"https://maps.mail.ru/osm/tools/overpass/api/interpreter\",\"https://overpass.private.coffee/api/interpreter\",\"https://overpass-api.de/api/interpreter\"]"
+)
+
 # Emergency-response profile: private/seasonal/poor roads are undesirable, not automatically impossible.
 # Physical restrictions and explicit motor-vehicle prohibitions remain hard blocks.
 code=code.replace('deny={"no","private"}', 'deny={"no"}')
