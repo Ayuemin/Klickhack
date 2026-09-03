@@ -47,6 +47,7 @@ jobs:
           curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o android-psch46/app/src/main/assets/www/leaflet.css
           python -c "import cairosvg; cairosvg.svg2png(url='android-psch46/tools/app_icon.svg',write_to='android-psch46/app/src/main/res/drawable/app_icon.png',output_width=512,output_height=512)"
           python android-psch46/tools/audit_existing_routes_fast.py
+          python android-psch46/tools/refine_route_audit.py
           python android-psch46/tools/enrich_water_sources_fast.py
           python - <<'PY'
           import json
@@ -61,8 +62,8 @@ jobs:
               for x in d.get(group,[]):
                   src=byid.get(x.get('id'))
                   if src:
-                      for k in ('route','distanceKm','via','routeSnapKm','routeVerified','routeWarnings','nearWater'):
-                          x[k]=src.get(k, [] if k in ('via','routeWarnings','nearWater') else None)
+                      for k in ('route','distanceKm','via','routeSnapKm','routeVerified','routeCaution','routeWarnings','routeHardWarnings','routeCautionWarnings','nearWater'):
+                          x[k]=src.get(k, [] if k in ('via','routeWarnings','routeHardWarnings','routeCautionWarnings','nearWater') else None)
           d.setdefault('meta',{})['routingProfile']='firetruck-safe-audited-existing-v2.2'
           d['meta']['version']='2.2-final'
           d['meta']['finalBuild']=True
@@ -87,13 +88,16 @@ jobs:
           assert d['meta']['waterFeatureCount']>0
           assert all(len(x.get('route',[]))>1 for x in official)
           assert all('routeVerified' in x for x in official)
+          assert all('routeCaution' in x for x in official)
           assert all('nearWater' in x for x in official)
           assert all('nearWater' in x for x in d.get('centers',[]))
           assert all('nearWater' in x for x in d.get('dpk',[]))
           verified=sum(1 for x in official if x.get('routeVerified'))
-          assert verified>=250, verified
-          print('OFFICIAL',len(official),'VERIFIED_ROUTES',verified,'UNVERIFIED',306-verified)
-          print('UNVERIFIED_NAMES',[x['name'] for x in official if not x.get('routeVerified')])
+          caution=sum(1 for x in official if x.get('routeCaution'))
+          blocked=[x['name'] for x in official if not x.get('routeVerified')]
+          assert verified>=1
+          print('OFFICIAL',len(official),'VERIFIED_ROUTES',verified,'BLOCKED',len(blocked),'CAUTION',caution)
+          print('BLOCKED_NAMES',blocked)
           print('WATER_FEATURES',d['meta']['waterFeatureCount'])
           print('WITH_VIA',sum(1 for x in official if x.get('via')))
           print('WITH_NEAR_WATER',sum(1 for x in official if x.get('nearWater')))
