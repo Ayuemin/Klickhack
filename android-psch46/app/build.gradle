@@ -8,7 +8,7 @@ android {
         applicationId 'ru.psch46.rayontrainer'
         minSdk 24
         targetSdk 35
-        versionCode 4
-        versionName '2.2-safe-route-water'
+        versionCode 5
+        versionName '2.2.1-final'
     }
 }
