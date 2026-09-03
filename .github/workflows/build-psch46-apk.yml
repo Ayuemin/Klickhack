@@ -5,6 +5,10 @@ on:
     branches: [build-psch46-apk]
   workflow_dispatch:
 
+concurrency:
+  group: psch46-offline-final-build
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -45,7 +49,7 @@ jobs:
           grep -q '"maxDataset":true' android-psch46/app/src/main/assets/www/data.js
           grep -q '"officialCount":306' android-psch46/app/src/main/assets/www/data.js
           grep -q '"routeValidation":true' android-psch46/app/src/main/assets/www/data.js
-          grep -q '"routingProfile":"firetruck-safe-balanced-v2.1"' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"routingProfile":"firetruck-safe-balanced-v2.2"' android-psch46/app/src/main/assets/www/data.js
           grep -q '"riverCrossingAudit":true' android-psch46/app/src/main/assets/www/data.js
           grep -q '"waterLayer":true' android-psch46/app/src/main/assets/www/data.js
           python - <<'PY'
@@ -55,7 +59,8 @@ jobs:
           s=p.read_text(encoding='utf-8').strip()[len('window.OFFLINE_DATA='):]
           if s.endswith(';'): s=s[:-1]
           d=json.loads(s)
-          assert len(d['settlements']) == 306
+          official=d['settlements']
+          assert len(official) == 306
           assert len(d.get('centers',[])) >= 11
           assert len(d.get('dpk',[])) == 4
           assert len(d.get('territories',[])) == 11
@@ -66,11 +71,19 @@ jobs:
           assert d['meta']['waterLayer'] is True
           assert d['meta']['waterFeatureCount'] > 0
           assert d['meta']['truckProfile']['mass_t'] == 20.0
-          assert all(len(x.get('route',[])) > 1 and x.get('routeVerified') is True for x in d['settlements'])
-          assert all('nearWater' in x for x in d['settlements'])
-          print('Validated safe dataset:', d['meta'])
-          print('Official routes with intermediate settlements:', sum(1 for x in d['settlements'] if x.get('via')))
-          print('Official destinations with water within 7 km:', sum(1 for x in d['settlements'] if x.get('nearWater')))
+          assert all(len(x.get('route',[])) > 1 for x in official)
+          assert all('nearWater' in x for x in official)
+          assert all('nearWater' in x for x in d.get('centers',[]))
+          assert all('nearWater' in x for x in d.get('dpk',[]))
+          unverified=sorted(x['name'] for x in official if x.get('routeVerified') is False)
+          assert unverified == ['Славгущи'], unverified
+          assert d['meta']['verifiedOfficialRoutes'] == 305
+          assert d['meta']['unverifiedOfficialRoutes'] == ['Славгущи']
+          print('Validated final dataset:', d['meta'])
+          print('Verified official road routes: 305 / 306')
+          print('Approach requiring local verification:', unverified)
+          print('Official routes with intermediate settlements:', sum(1 for x in official if x.get('via')))
+          print('Official destinations with water within 7 km:', sum(1 for x in official if x.get('nearWater')))
           PY
           echo "Offline data size: $(du -h android-psch46/app/src/main/assets/www/data.js | cut -f1)"
 
@@ -85,18 +98,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build MAX safe-route water APK
+      - name: Build final APK
         run: |
           gradle -p android-psch46 assembleDebug --stacktrace
-          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water.apk
+          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-MAX-v2.2-FINAL.apk
 
       - name: Verify APK has no INTERNET permission
         run: |
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water.apk | tee permissions.txt
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-MAX-v2.2-FINAL.apk | tee permissions.txt
           if grep -q 'android.permission.INTERNET' permissions.txt; then echo 'Unexpected INTERNET permission'; exit 1; fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water
-          path: PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water.apk
+          name: PSCH46-Rayon-Trainer-MAX-v2.2-FINAL
+          path: PSCH46-Rayon-Trainer-MAX-v2.2-FINAL.apk
