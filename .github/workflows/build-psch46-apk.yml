@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: psch46-offline-final-build
+  group: psch46-offline-ui-only-v221
   cancel-in-progress: true
 
 permissions:
