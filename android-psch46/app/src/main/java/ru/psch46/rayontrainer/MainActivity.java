@@ -11,6 +11,9 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+
 public class MainActivity extends Activity {
     private WebView webView;
     private static final String START_URL = "file:///android_asset/www/index.html";
@@ -33,6 +36,12 @@ public class MainActivity extends Activity {
             public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return request.getUrl() == null || !"file".equals(request.getUrl().getScheme());
             }
+
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                injectAssetScript(view, "www/route-enhancements.js");
+            }
         });
 
         WebSettings settings = webView.getSettings();
@@ -54,6 +63,19 @@ public class MainActivity extends Activity {
             webView.loadUrl(START_URL);
         } else {
             webView.restoreState(savedInstanceState);
+        }
+    }
+
+    private void injectAssetScript(WebView view, String assetPath) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(getAssets().open(assetPath)))) {
+            StringBuilder js = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                js.append(line).append('\n');
+            }
+            view.evaluateJavascript(js.toString(), null);
+        } catch (Exception ignored) {
+            // Base trainer remains usable even if the optional route overlay cannot be injected.
         }
     }
 
