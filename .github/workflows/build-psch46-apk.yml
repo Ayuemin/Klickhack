@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Prepare maximum offline assets and icon
+      - name: Prepare maximum offline assets, safe routes and icon
         run: |
           python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml cairosvg
           mkdir -p android-psch46/app/src/main/assets/www android-psch46/app/src/main/res/drawable
@@ -35,11 +35,15 @@ jobs:
           python android-psch46/tools/normalize_settlement_aliases.py
           python android-psch46/tools/fix_catalog.py
           python android-psch46/tools/enrich_max_dataset.py
+          python android-psch46/tools/reroute_firetruck_safe.py
           test -s android-psch46/app/src/main/assets/www/data.js
+          test -s android-psch46/app/src/main/assets/www/route-enhancements.js
           test -s android-psch46/app/src/main/res/drawable/app_icon.png
           grep -q '"catalogVerified":true' android-psch46/app/src/main/assets/www/data.js
           grep -q '"maxDataset":true' android-psch46/app/src/main/assets/www/data.js
           grep -q '"officialCount":306' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"routeValidation":true' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"routingProfile":"firetruck-safe-v2.1"' android-psch46/app/src/main/assets/www/data.js
           python - <<'PY'
           import json
           from pathlib import Path
@@ -52,7 +56,12 @@ jobs:
           assert len(d.get('dpk',[])) == 4
           assert len(d.get('territories',[])) == 11
           assert d['meta']['totalTrainingPoints'] >= 306
-          print('Validated dataset:', d['meta'])
+          assert d['meta']['safeRoutes'] == d['meta']['totalTrainingPoints']
+          assert d['meta']['routeValidation'] is True
+          assert d['meta']['truckProfile']['mass_t'] == 20.0
+          assert all(len(x.get('route',[])) > 1 for x in d['settlements'])
+          print('Validated safe dataset:', d['meta'])
+          print('Official routes with intermediate settlements:', sum(1 for x in d['settlements'] if x.get('via')))
           PY
           echo "Offline data size: $(du -h android-psch46/app/src/main/assets/www/data.js | cut -f1)"
 
@@ -67,18 +76,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build MAX offline APK
+      - name: Build MAX safe-route APK
         run: |
           gradle -p android-psch46 assembleDebug --stacktrace
-          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-MAX-v2.0.apk
+          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-MAX-v2.1-safe-route.apk
 
       - name: Verify APK has no INTERNET permission
         run: |
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-MAX-v2.0.apk | tee permissions.txt
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-MAX-v2.1-safe-route.apk | tee permissions.txt
           if grep -q 'android.permission.INTERNET' permissions.txt; then echo 'Unexpected INTERNET permission'; exit 1; fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PSCH46-Rayon-Trainer-MAX-v2.0
-          path: PSCH46-Rayon-Trainer-MAX-v2.0.apk
+          name: PSCH46-Rayon-Trainer-MAX-v2.1-safe-route
+          path: PSCH46-Rayon-Trainer-MAX-v2.1-safe-route.apk
