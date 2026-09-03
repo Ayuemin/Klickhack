@@ -1,4 +1,4 @@
-name: Build PSCH46 APK
+name: Build PSCH46 Offline APK
 
 on:
   push:
@@ -18,6 +18,21 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Prepare offline map assets
+        run: |
+          python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml
+          mkdir -p android-psch46/app/src/main/assets/www
+          curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.js -o android-psch46/app/src/main/assets/www/leaflet.js
+          curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o android-psch46/app/src/main/assets/www/leaflet.css
+          python android-psch46/tools/build_offline_data.py
+          test -s android-psch46/app/src/main/assets/www/data.js
+          echo "Offline data size: $(du -h android-psch46/app/src/main/assets/www/data.js | cut -f1)"
+
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
@@ -29,11 +44,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK
-        run: gradle -p android-psch46 assembleDebug --stacktrace
+      - name: Build offline APK
+        run: |
+          gradle -p android-psch46 assembleDebug --stacktrace
+          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-Offline.apk
+
+      - name: Verify APK has no INTERNET permission
+        run: |
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-Offline.apk | tee permissions.txt
+          if grep -q 'android.permission.INTERNET' permissions.txt; then echo 'Unexpected INTERNET permission'; exit 1; fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PSCH46-Rayon-Trainer-APK
-          path: android-psch46/app/build/outputs/apk/debug/app-debug.apk
+          name: PSCH46-Rayon-Trainer-Offline
+          path: PSCH46-Rayon-Trainer-Offline.apk
