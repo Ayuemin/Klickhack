@@ -36,8 +36,8 @@ jobs:
           python android-psch46/tools/fix_catalog.py
           python android-psch46/tools/enrich_max_dataset.py
           python android-psch46/tools/reroute_firetruck_safe_balanced.py
-          python android-psch46/tools/audit_route_river_crossings.py
-          python android-psch46/tools/enrich_water_sources.py
+          python android-psch46/tools/audit_route_river_crossings_reliable.py
+          python android-psch46/tools/enrich_water_sources_reliable.py
           test -s android-psch46/app/src/main/assets/www/data.js
           test -s android-psch46/app/src/main/assets/www/route-enhancements.js
           test -s android-psch46/app/src/main/res/drawable/app_icon.png
