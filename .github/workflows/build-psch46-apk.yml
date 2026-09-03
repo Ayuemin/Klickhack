@@ -47,7 +47,7 @@ jobs:
           curl -fL --retry 5 --retry-delay 2 https://unpkg.com/leaflet@1.9.4/dist/leaflet.css -o android-psch46/app/src/main/assets/www/leaflet.css
           python -c "import cairosvg; cairosvg.svg2png(url='android-psch46/tools/app_icon.svg',write_to='android-psch46/app/src/main/res/drawable/app_icon.png',output_width=512,output_height=512)"
           python android-psch46/tools/audit_existing_routes_fast.py
-          python android-psch46/tools/enrich_water_sources_reliable.py
+          python android-psch46/tools/enrich_water_sources_fast.py
           python - <<'PY'
           import json
           from pathlib import Path
