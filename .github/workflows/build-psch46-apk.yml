@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Prepare maximum offline assets, safe routes and icon
+      - name: Prepare maximum offline assets, safe routes, water layer and icon
         run: |
           python -m pip install --disable-pip-version-check requests beautifulsoup4 lxml cairosvg
           mkdir -p android-psch46/app/src/main/assets/www android-psch46/app/src/main/res/drawable
@@ -37,6 +37,7 @@ jobs:
           python android-psch46/tools/enrich_max_dataset.py
           python android-psch46/tools/reroute_firetruck_safe_balanced.py
           python android-psch46/tools/audit_route_river_crossings.py
+          python android-psch46/tools/enrich_water_sources.py
           test -s android-psch46/app/src/main/assets/www/data.js
           test -s android-psch46/app/src/main/assets/www/route-enhancements.js
           test -s android-psch46/app/src/main/res/drawable/app_icon.png
@@ -46,6 +47,7 @@ jobs:
           grep -q '"routeValidation":true' android-psch46/app/src/main/assets/www/data.js
           grep -q '"routingProfile":"firetruck-safe-balanced-v2.1"' android-psch46/app/src/main/assets/www/data.js
           grep -q '"riverCrossingAudit":true' android-psch46/app/src/main/assets/www/data.js
+          grep -q '"waterLayer":true' android-psch46/app/src/main/assets/www/data.js
           python - <<'PY'
           import json
           from pathlib import Path
@@ -61,10 +63,14 @@ jobs:
           assert d['meta']['safeRoutes'] >= d['meta']['officialCount']
           assert d['meta']['routeValidation'] is True
           assert d['meta']['riverCrossingAudit'] is True
+          assert d['meta']['waterLayer'] is True
+          assert d['meta']['waterFeatureCount'] > 0
           assert d['meta']['truckProfile']['mass_t'] == 20.0
           assert all(len(x.get('route',[])) > 1 and x.get('routeVerified') is True for x in d['settlements'])
+          assert all('nearWater' in x for x in d['settlements'])
           print('Validated safe dataset:', d['meta'])
           print('Official routes with intermediate settlements:', sum(1 for x in d['settlements'] if x.get('via')))
+          print('Official destinations with water within 7 km:', sum(1 for x in d['settlements'] if x.get('nearWater')))
           PY
           echo "Offline data size: $(du -h android-psch46/app/src/main/assets/www/data.js | cut -f1)"
 
@@ -79,18 +85,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build MAX safe-route APK
+      - name: Build MAX safe-route water APK
         run: |
           gradle -p android-psch46 assembleDebug --stacktrace
-          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-MAX-v2.1-safe-route.apk
+          cp android-psch46/app/build/outputs/apk/debug/app-debug.apk PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water.apk
 
       - name: Verify APK has no INTERNET permission
         run: |
-          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-MAX-v2.1-safe-route.apk | tee permissions.txt
+          $ANDROID_HOME/build-tools/35.0.0/aapt dump permissions PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water.apk | tee permissions.txt
           if grep -q 'android.permission.INTERNET' permissions.txt; then echo 'Unexpected INTERNET permission'; exit 1; fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: PSCH46-Rayon-Trainer-MAX-v2.1-safe-route
-          path: PSCH46-Rayon-Trainer-MAX-v2.1-safe-route.apk
+          name: PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water
+          path: PSCH46-Rayon-Trainer-MAX-v2.2-safe-route-water.apk
